@@ -1,24 +1,23 @@
 const express = require('express');
-require('dotenv').config;
 const rateLimit = require('express-rate-limit');
 
+const config = require('./config/env'); // validation runs here at startup
 const urlRoutes = require('./routes/urls');
+const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
 
-app.use(express.json);
+app.use(express.json());
 
-//more strict limiter for write opp
+// --- Rate limiters ---
 const createLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20,                   // max 20 requests per window
+  windowMs: 15 * 60 * 1000,
+  max: 20,
   message: { error: 'Too many URLs created. Please try again later.' },
-  standardHeaders: true,     // sends RateLimit headers in response
+  standardHeaders: true,
   legacyHeaders: false,
 });
 
-//less strict for read operations
 const readLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
@@ -27,17 +26,27 @@ const readLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-//routes with rate limit
 app.use('/api/shorten', createLimiter);
 app.use('/api/stats', readLimiter);
 app.use('/:slug', readLimiter);
 
+// --- Routes ---
 app.use('/', urlRoutes);
 
 app.get('/health', (req, res) => {
-  res.json({status : 'ok'});
+  res.json({ status: 'ok', environment: config.nodeEnv });
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+// --- 404 handler ---
+// Catches any request that didn't match a route above
+app.use((req, res, next) => {
+  res.status(404).json({ status: 'error', message: 'Route not found' });
+});
+
+// --- Global error handler ---
+// MUST be registered last, after all routes
+app.use(errorHandler);
+
+app.listen(config.port, () => {
+  console.log(`Server running on http://localhost:${config.port} [${config.nodeEnv}]`);
 });
